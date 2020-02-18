@@ -153,67 +153,7 @@ def main(_):
     _print_losses(os.path.join(FLAGS.checkpoint_dir, 'debug'))
 
 
-def _train(train_model, checkpoint_dir, train_steps, summary_freq):
-  """Runs a trainig loop."""
-  saver = train_model.saver
-  sv = tf.train.Supervisor(logdir=checkpoint_dir, save_summaries_secs=0,
-                           saver=None)
-  config = tf.ConfigProto()
-  config.gpu_options.allow_growth = True
-  with sv.managed_session(config=config) as sess:
-    logging.info('Attempting to resume training from %s...', checkpoint_dir)
-    checkpoint = tf.train.latest_checkpoint(checkpoint_dir)
-    logging.info('Last checkpoint found: %s', checkpoint)
-    if checkpoint:
-      saver.restore(sess, checkpoint)
-    elif FLAGS.imagenet_ckpt:
-      logging.info('Restoring pretrained weights from %s', FLAGS.imagenet_ckpt)
-      train_model.imagenet_init_restorer.restore(sess, FLAGS.imagenet_ckpt)
 
-    logging.info('Training...')
-    start_time = time.time()
-    last_summary_time = time.time()
-    steps_per_epoch = train_model.reader.steps_per_epoch
-    step = 1
-    while step <= train_steps:
-      fetches = {
-          'train': train_model.train_op,
-          'global_step': train_model.global_step,
-      }
-      if step % summary_freq == 0:
-        fetches['loss'] = train_model.total_loss
-        fetches['summary'] = sv.summary_op
-
-      if FLAGS.debug:
-        fetches.update(train_model.exports)
-
-      results = sess.run(fetches)
-      global_step = results['global_step']
-
-      if step % summary_freq == 0:
-        sv.summary_writer.add_summary(results['summary'], global_step)
-        train_epoch = math.ceil(global_step / steps_per_epoch)
-        train_step = global_step - (train_epoch - 1) * steps_per_epoch
-        this_cycle = time.time() - last_summary_time
-        last_summary_time += this_cycle
-        logging.info(
-            'Epoch: [%2d] [%5d/%5d] time: %4.2fs (%ds total) loss: %.3f',
-            train_epoch, train_step, steps_per_epoch, this_cycle,
-            time.time() - start_time, results['loss'])
-
-      if FLAGS.debug:
-        debug_dir = os.path.join(checkpoint_dir, 'debug')
-        if not gfile.Exists(debug_dir):
-          gfile.MkDir(debug_dir)
-        for name, tensor in results.iteritems():
-          if name == 'summary':
-            continue
-          s = io.BytesIO()
-          filename = os.path.join(debug_dir, name)
-          np.save(s, tensor)
-          with gfile.Open(filename, 'w') as f:
-            f.write(s.getvalue())
-        return
 
       # steps_per_epoch == 0 is intended for debugging, when we run with a
       # single image for sanity check
